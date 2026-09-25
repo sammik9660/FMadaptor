@@ -1,0 +1,69 @@
+# OS temporary files
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editor / IDE local state and backups
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+*.temp
+
+# Python cache and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Arduino / native build outputs
+/build/
+/build-*/
+/out/
+/.pio/
+/arduino-build/
+*.uf2
+*.elf
+*.o
+*.bin
+*.hex
+*.map
+*.a
+*.d
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+!.env.template
+/secrets/
+/secret/
+/credentials/
+/credential/
+credentials.json
+credentials.local.*
+secrets.local.*
+*.private.key
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Raw logs and temporary extraction: reviewed excerpts remain eligible
+/raw-logs/
+/logs/raw/
+/tmp/
+/temp/
+/extracted/
+/local-only/
+
+# Do not globally ignore .txt, .pdf, .png, .jpg, .ino or .md.
+# Put unreviewed logs and arbitrary local secrets in local-only/.
