@@ -1,203 +1,189 @@
-# RP2040-SI4703-FM-Adapter
+# Samsung USB-C FM Radio Adapter
 
-RP2040과 SI4703를 사용하는 실험적 USB FM Radio Adapter입니다. Android/Samsung FMRadioService의 Vendor Control Request를 처리하고, I2C로 FM 튜너를 제어하며 주파수와 RSSI를 호스트에 전달합니다.
+An open-source RP2040 + SI4703 adapter designed to replace the FM functionality of Samsung's original FM-capable USB-C earphones while retaining compatibility with Samsung's built-in FM Radio app.
 
-## Overview
+## Current Status
 
-스마트폰 라디오 앱이 외부 장치에 보내는 vendor control 요청과 FM 튜너 제어의 연결 방식을 조사하기 위해 만든 개인 프로젝트입니다. Adafruit TinyUSB로 USB 요청을 처리하고 SI470X API를 통해 SI4703를 제어합니다.
+**Functional prototype / hardware-verified prototype.** The owner physically verified commit `a15fce261708a2150e12d6dc011ce3794606c2b7` on an RP2040-Zero, SI4703 and Samsung phone. Normal earphone mode, FM playback and tuning worked, without the previously observed severe tuning delay or continuous loud beep. This firmware was promoted to main in merge commit `c94294bc829e44bb5e68e271b6d399e4fa02be47` without changing its bytes.
 
-현재 canonical firmware는 [firmware/fm_adapter/fm_adapter.ino](firmware/fm_adapter/fm_adapter.ino)입니다. 작성자가 실제 동작을 확인한 최종 코드와 주석·공백을 제외하면 동일한 주석 추가 버전을 변경 없이 보존한 파일입니다. 아래 설명은 현재 실행 코드에 근거하며, 기존 주석의 표현을 모두 검증된 사실로 취급하지 않습니다.
+These results apply to the tested setup. The exact phone model, Android version and FM app version remain undocumented; compatibility across Samsung devices has not been established.
 
-## What Works
+## Overview / Why This Project Exists
 
-다음은 현재 코드에 구현되어 있으며 작성자의 기존 동작 확인을 바탕으로 보존한 기능입니다. 모든 기기에서의 동작이나 새로운 환경에서의 빌드 재현을 의미하지는 않습니다.
+The key feature is the connection to Samsung's original FM software: the built-in FM Radio app/service acts as the host and controller for an external SI4703 tuner through an RP2040 protocol bridge. The adapter provides the FM-radio role normally associated with compatible Samsung USB-C earphones.
 
-- [x] RP2040 ↔ SI4703 I2C control
-- [x] `safeTune()`을 통한 FM frequency tuning
-- [x] SEEK 요청 처리 및 시간 기반 상태 관리
-- [x] RSSI 조회 및 마지막 결과 저장
-- [x] BesCmd SET / GET / QUERY handling
-- [x] 음소거 및 볼륨 제어
-- [x] SEEK와 Direct Tune을 control callback에서 예약하고 main loop에서 처리
-- [x] Interrupt IN Endpoint `0x85`를 통한 두 단계 notification
+No replacement Android FM Radio app is required. The project implements the necessary parts of the Samsung-compatible USB control protocol; it does not reproduce all USB Audio or HID functionality of the original earphones.
+
+## How It Works
+
+```text
+Samsung built-in FM Radio app/service
+                  |
+          USB-C control / status
+                  |
+               RP2040
+     (Samsung protocol bridge)
+                  |
+                 I2C
+                  |
+               SI4703
+                  |
+           analog FM audio
+                  |
+       3.5 mm earphones / antenna
+```
+
+RP2040 receives Samsung USB control requests, translates them into tuner operations, and returns frequency/RSSI status and notifications. Audio comes from the SI4703 analog output to the connected earphones. FM PCM audio is not sent through RP2040 to the phone over USB. The earphones also serve as the tuner antenna.
+
+## Features
+
+- Samsung built-in FM Radio app/service integration, with normal earphone mode verified on the owner's setup.
+- FM frequency tuning through `safeTune()`.
+- Volume and mute control.
+- SEEK command support and RSSI reporting; reliable station detection remains a known issue.
+- SI4703 analog FM audio output.
+- BesCmd SET=161, GET=162 and QUERY=163 handling.
+- SEEK (CMD7) and direct tune (CMD9) scheduled in the control callback and processed in the main loop.
+- Two-stage notification through Interrupt IN Endpoint `0x85`.
+- Existing RAM-only CMD9 DebugSnapshot instrumentation retained in the verified firmware.
 
 ## Hardware
 
-사용 구성은 RP2040 기반 보드와 SI4703 FM 튜너입니다. 정확한 보드·모듈 모델, 전원 배선, 안테나 및 아날로그 오디오 연결은 아직 문서화되지 않았습니다.
+- Waveshare RP2040-Zero.
+- SI4703 FM tuner module.
+- 3.5 mm earphones for analog audio and antenna use.
+- USB-C connection to a Samsung Android device with the built-in FM Radio app.
 
-| Function | RP2040 GPIO |
+The module's exact model, supply wiring and complete circuit schematic remain to be documented. Check the module's electrical requirements before wiring it.
+
+## Pinout
+
+| SI4703 connection | RP2040 GPIO |
 | --- | --- |
-| SI4703 SDA | GPIO 8 |
-| SI4703 SCL | GPIO 9 |
-| SI4703 RESET | GPIO 2 |
+| RESET | GPIO2 |
+| SDIO / SDA | GPIO4 |
+| SCLK / SCL | GPIO5 |
 
-I2C 클록은 `Wire.setClock(100000)`으로 100 kHz에 설정됩니다.
+I2C runs at 100 kHz. A separate diagnostic sketch repeatedly found address `0x10` after moving the physical bus from GPIO8/9 to GPIO4/5; the full adapter was then verified with this mapping. This observation does not establish why the earlier wiring failed.
 
-`DUMMY_INT = 4`는 `rx.setup(RESET_PIN, DUMMY_INT)`의 두 번째 인자로 전달됩니다. 원본 주석은 비연결 더미 핀으로 설명하지만, 현재 저장소에는 라이브러리 구현이나 실제 배선 자료가 없어 GPIO 4를 필수 인터럽트 배선으로 안내하지 않습니다.
-
-## Software / Dependencies
-
-| Include | 용도 | 버전 |
-| --- | --- | --- |
-| `Adafruit_TinyUSB.h` | USB 인터페이스 등록, control response 및 Endpoint 처리 | 아직 문서화되지 않음 |
-| `Wire.h` | I2C 통신 | 보드 코어에 포함된 버전 미확인 |
-| `SI470X.h` | SI4703 초기화, 채널·SEEK·음소거·볼륨·RSSI 제어 | 배포본·버전·로컬 수정 여부 미확인 |
-
-펌웨어는 Arduino 방식의 `setup()`과 `loop()`를 사용합니다. `ARDUINO_ARCH_RP2040`이 정의된 경우 main loop에서 `TinyUSBDevice.task()`를 호출합니다.
-
-Arduino 스케치 진입 파일은 `firmware/fm_adapter/fm_adapter.ino`입니다. 정확한 Arduino IDE, RP2040 core, 보드 선택 및 USB Stack 설정은 아직 문서화되지 않았으므로 재현 가능한 빌드·업로드 절차는 보류합니다. 라이브러리 소스와 빌드 결과물도 현재 저장소에 포함되어 있지 않습니다.
-
-## Protocol Overview
-
-펌웨어는 VID `0x04E8`, PID `0xA05B`를 설정하고, 제조사 문자열 `Samsung`과 제품 문자열 `Samsung USB C Earphone`을 사용합니다. 이는 코드에 설정된 식별값이며, 공식 인증이나 정품 descriptor 전체 재현을 뜻하지 않습니다.
-
-`SamsungHybridInterface`는 vendor-specific 인터페이스 번호 2, 3, 4를 기술하고, 인터페이스 4에 Interrupt IN Endpoint `0x85`를 둡니다. 해당 Endpoint의 descriptor는 최대 패킷 크기 5바이트와 `bInterval = 4`를 지정합니다.
-
-control callback은 다음 필드를 읽습니다.
-
-| USB request field | 코드에서 사용하는 의미 |
-| --- | --- |
-| `bRequest` | BesCmd SET / GET / QUERY |
-| `wValue` | command 번호 |
-| `wIndex` | 명령 인자 |
-| `wLength` | control transfer 길이 |
-
-아래의 `0xA1`, `0xA2`, `0xA3`는 **bRequest 값**입니다.
-
-| BesCmd / bRequest | Command / wValue | 코드 동작 |
-| --- | --- | --- |
-| SET = 161 / `0xA1` | 0 | 값이 1이면 음소거 해제·저장 볼륨 적용, 그 외에는 음소거. 하드웨어 전원 차단 구현은 아님 |
-| SET = 161 / `0xA1` | 4 | 값이 1이면 음소거, 그 외에는 해제·저장 볼륨 적용 |
-| SET = 161 / `0xA1` | 5 | 값을 `current_vol`에 저장하고 `rx.setVolume()` 호출 |
-| SET = 161 / `0xA1` | 7 | SEEK 예약. 값이 1이면 main loop에서 `rx.seek(0, 1)`, 그 외에는 `rx.seek(0, 0)` 호출 |
-| SET = 161 / `0xA1` | 9 | Direct Tune 목표 주파수 저장 및 처리 예약 |
-| GET = 162 / `0xA2` | 8 | 저장된 볼륨 반환 |
-| GET = 162 / `0xA2` | 13 | 저장된 주파수 반환 |
-| QUERY = 163 / `0xA3` | 별도 분기 없음 | 저장된 성공 플래그·주파수·RSSI 반환 |
-
-SEEK 인자 1/0은 코드 주석에서 상향/하향으로 설명됩니다. 라이브러리 내부의 정확한 인자 의미는 사용한 SI470X 구현과 함께 확인해야 합니다.
-
-SET은 `wLength == 0`이면 `tud_control_status()`, 그 외에는 첫 바이트가 1인 버퍼로 `tud_control_xfer()`를 호출합니다. 이 ACK는 SEEK나 튜닝의 하드웨어 완료를 의미하지 않습니다.
-
-GET은 응답 버퍼의 첫 2바이트에 16비트 값을 복사합니다. command 8·13 이외에는 기본값 1을 사용합니다. 처리 분기가 없는 SET command도 ACK 경로에 도달하므로, ACK만으로 해당 명령의 지원 여부를 판단할 수 없습니다.
-
-QUERY의 처음 5바이트는 다음과 같습니다.
-
-| Byte | 내용 |
-| --- | --- |
-| 0 | `last_seek_success ? 1 : 0` |
-| 1 | 고정값 1. 실제 stereo 측정값으로 해석하지 않음 |
-| 2 | `current_freq` 하위 바이트 |
-| 3 | `current_freq` 상위 바이트 |
-| 4 | `last_rssi` |
-
-## Firmware Architecture
-
-SEEK 및 Direct Tune의 주된 흐름은 다음과 같습니다.
-
-```text
-Android/Samsung FMRadioService
-  → USB Vendor Control Request
-  → tud_vendor_control_xfer_cb()
-  → target_val / pending_cmd 저장 → control ACK
-  → loop()에서 SI4703 제어
-  → 주파수 / RSSI 저장
-  → Endpoint 0x85 Notify
-
-GET / QUERY
-  → control callback에서 저장된 상태를 control response로 반환
-```
-
-1. **초기화:** USB 식별값·인터페이스를 설정하고 detach → `delay(100)` → attach를 수행합니다. I2C와 튜너를 초기화한 뒤 `setBand(0)`, `setSpace(0)`, 음소거, 볼륨 0 및 초기 주파수 튜닝을 적용합니다. 초기 `current_freq`는 10770, 저장 볼륨은 7입니다.
-2. **명령 예약:** SET command 7·9는 콜백에서 `target_val`과 `pending_cmd`만 설정하고 ACK 경로로 진행합니다.
-3. **SEEK:** main loop에서 `rx.seek()`를 호출한 뒤 시간을 기록합니다. `waiting_for_seek` 상태에서 `millis() - seek_start_time > 60`이면 주파수와 RSSI를 읽습니다. 이는 호출 이후 60 ms를 초과했는지 확인하는 시간 기반 처리이며, 칩의 완료 비트 확인이 아닙니다.
-4. **Direct Tune:** main loop에서 `safeTune()`을 호출한 뒤 RSSI를 읽고 `last_seek_success = true`로 설정합니다.
-5. **Notify:** `notify_state`와 Endpoint busy 여부를 확인하며 첫 패킷 `01 00 08 00 00`, 다음 패킷 `01 01 <freq low> <freq high> <RSSI>`를 전송 요청합니다.
-
-SEEK 결과의 성공 플래그는 `last_rssi > 15`로 결정됩니다. Direct Tune의 성공 플래그는 무조건 true이며 실제 수신 품질 검증 결과가 아닙니다. GET / QUERY는 새 측정을 시작하지 않고 마지막 저장 상태를 반환합니다.
-
-이 구조는 SEEK와 Direct Tune 작업을 control callback 밖으로 옮깁니다. SET 0·4·5는 콜백에서 튜너 API를 직접 호출하고, 라이브러리 내부 대기도 확인되지 않았으므로 전체 펌웨어를 완전히 non-blocking이라고 설명하지 않습니다.
-
-## Frequency Handling
-
-기본 주파수 표현은 `10770 = 107.70 MHz`입니다. 이 표현에서 정수 1은 0.01 MHz, 즉 10 kHz에 해당합니다.
-
-`safeTune(freq_val)`은 다음 정수 계산으로 채널을 만든 후 `rx.setChannel(channel)`을 호출합니다.
+Initialization is deliberately ordered as follows:
 
 ```cpp
-// freq_val > 5000
-channel = (freq_val - 8750) / 20;
-
-// 그 외의 입력
-channel = (freq_val - 875) / 2;
+Wire.setSDA(SDA_PIN);
+Wire.setSCL(SCL_PIN);
+Wire.setClock(100000);
+rx.setup(RESET_PIN, SDA_PIN);
 ```
 
-두 번째 분기는 1077을 107.7 MHz로 표현하는 입력 형식에 대응하는 계산입니다. 두 계산 모두 87.5 MHz 기준의 200 kHz 채널 간격을 사용합니다.
+In PU2CLR SI470X 1.0.5, the second `setup()` argument is the actual SDA pin. The library drives SDA LOW during tuner reset, then calls `Wire.begin()` to enable I2C. Do not add a preceding `Wire.begin()`: Arduino-Pico 6.1.1 returns early if Wire is already running, preventing this call from restoring SDA to the I2C function. The retained `DUMMY_INT` definition is unused.
 
-SEEK 이후에는 다음 보정을 수행합니다.
+## Build Environment
 
-```cpp
-uint16_t fake_f = rx.getFrequency();
-uint16_t channel = (fake_f - 8750) / 10;
-uint16_t real_f = 8750 + (channel * 20);
-current_freq = real_f;
+The established build environment for the verified baseline is:
+
+| Component | Version / selection |
+| --- | --- |
+| Arduino core | Earle Philhower Arduino-Pico 6.1.1 |
+| Board target | Waveshare RP2040 Zero |
+| USB stack | Adafruit TinyUSB (`usbstack=tinyusb`) |
+| Adafruit TinyUSB Library | 3.7.7, bundled with the core |
+| Tuner library | PU2CLR SI470X 1.0.5 (`SI470X.h`) |
+| I2C library | Wire, bundled with the core |
+| Board menus | 200 MHz, 2MB/no FS, Small (`-Os`), no RTOS; remaining menus at defaults |
+
+Open [firmware/fm_adapter/fm_adapter.ino](firmware/fm_adapter/fm_adapter.ino) in Arduino IDE and select the board and USB stack above. Install the external dependencies separately; their source is not vendored here.
+
+With Arduino CLI and that core installed:
+
+```sh
+arduino-cli compile --fqbn rp2040:rp2040:waveshare_rp2040_zero:usbstack=tinyusb firmware/fm_adapter
 ```
 
-이 수식은 반환값이 87.5 MHz 기준·100 kHz 간격으로 계산되었다고 가정하여 채널 인덱스를 역산하고, 200 kHz 간격으로 복원합니다. 현재 코드에 보존된 환경별 보정이며, 모든 SI470X 버전의 동작이나 라이브러리 결함을 입증하는 설명은 아닙니다.
+The GPIO4/5 firmware compiled with 85,788 bytes of flash and 17,836 bytes of global RAM. These are recorded build results, not guarantees for other toolchain versions. Arduino-Pico 6.2.0 was also found on the development PC; it is not the documented reference environment.
 
-코드는 `setBand(0)`, `setSpace(0)`을 사용하고 원본 주석은 87.5–108.0 MHz 대역과 200 kHz spacing을 의도한다고 설명합니다. 해당 API 설정의 의미는 실제 사용한 라이브러리 버전과 함께 재확인해야 합니다.
+## Usage
 
-`safeTune()`에는 입력 범위 검사나 격자 정렬 검사가 없고 정수 나눗셈을 사용합니다. Direct Tune 응답의 `current_freq`도 실제 주파수 재측정값이 아니라 요청값이므로, 임의 입력에 대한 안전성이나 정확한 튜닝 결과를 보장하지 않습니다.
+1. Wire the module using the pinout above and verify its power connections.
+2. Compile the firmware using the reference environment and upload it using the RP2040 board's supported upload procedure.
+3. Connect earphones to the SI4703 analog output/antenna connection and connect the adapter to the Samsung phone over USB-C.
+4. Open Samsung's built-in FM Radio app and use its tuning, volume and mute controls. Normal earphone mode is verified; station search has the limitations below.
+
+**During initialization and connection experiments, keep the earphones out of your ears.** Loud analog audio transients have occurred in abnormal states. Start listening at low volume after stable operation is established.
+
+## Protocol and Firmware Notes
+
+The firmware sets VID `0x04E8`, PID `0xA05B`, manufacturer string `Samsung` and product string `Samsung USB C Earphone`. These are interoperability settings, not evidence of official approval or complete descriptor reproduction.
+
+| Request | Command | Current behavior |
+| --- | --- | --- |
+| SET=161 (`0xA1`) | 0 / 4 / 5 | Radio mute-based on/off / mute / volume |
+| SET=161 (`0xA1`) | 7 / 9 | Schedule SEEK / direct tune |
+| GET=162 (`0xA2`) | 8 / 13 / 17 | Stored volume / stored frequency / zero |
+| QUERY=163 (`0xA3`) | Current handler | Stored success flag, fixed byte 1, frequency and RSSI |
+
+The request command is in `wValue`, with its argument in `wIndex`. An ACK means the control request was acknowledged, not that tuning has completed. Unhandled SET commands can still reach the ACK path; other GET commands currently return the default value 1.
+
+SEEK/direct tune use `pending_cmd` and `target_val`; GET/QUERY return stored state. Notify packets are `01 00 08 00 00` and `01 01 <frequency low> <frequency high> <RSSI>`. SEEK status processing uses a greater-than-60-ms condition after `rx.seek()` returns. The library's tuning/seek polling can block; the firmware is not fully non-blocking.
+
+Frequency values normally use `10770 = 107.70 MHz`. The preserved `safeTune()` calculations are `(freq_val - 8750) / 20` for inputs above 5000 and `(freq_val - 875) / 2` otherwise. SEEK converts `rx.getFrequency()` using `channel = (fake_f - 8750) / 10`, then `real_f = 8750 + channel * 20`. These are the verified legacy implementation's existing conversions, not a claim about every SI470X release. `setBand(0)` and `setSpace(0)` select the 87.5–108 MHz band and 200 kHz spacing in the installed library.
+
+CMD9 snapshots use format v1, 88 bytes, vendor IN `0xC0/0xD9`, `wValue=0x464D`, `wIndex=1`. The Android diagnostic project retained on main comes from the later v4 experiment and is not a matching reader for this firmware. It is a development tool, not a replacement FM app. A v1 reader remains on `historical/working-snapshot-v1`. No diagnostic code was removed for this documentation update.
 
 ## Project Structure
 
 ```text
-RP2040-SI4703-FM-Adapter/
-├── firmware/
-│   └── fm_adapter/
-│       └── fm_adapter.ino
-├── docs/
-│   ├── hardware/
-│   │   └── README.md
-│   ├── protocol/
-│   │   └── README.md
-│   └── images/
-│       └── README.md
-├── README.md
-├── PROJECT_STATE.md
-├── AGENTS.md
-├── LICENSE
-└── .gitignore
+firmware/fm_adapter/fm_adapter.ino  Verified legacy firmware
+diagnostics/android-fm-debug/    Retained experimental Android diagnostic tool
+docs/hardware/                  Hardware and wiring notes
+docs/protocol/                  Protocol notes and historical recovery evidence
+docs/images/                    Reviewed photos/screenshots when available
+README.md                       Public project overview
+PROJECT_STATE.md                Development status and evidence handover
+AGENTS.md                       Repository working rules
+LICENSE                         MIT License for this project's own code
+.gitignore                      Local files and build-output exclusions
 ```
 
-## Known Limitations
+Original project materials remain in a separate archive. Raw logs, credentials and unreviewed images should not be committed; review identifying information before publishing excerpts.
 
-- **오디오 전달:** PCM USB audio path가 구현되어 있지 않습니다. `tud_audio_rx_done_cb()`는 true만 반환합니다. 스마트폰 스피커 재생, Bluetooth 오디오 라우팅 및 완전한 USB Audio 구현은 현재 범위 밖입니다.
-- **USB 호환성:** 현재 descriptor 구성과 vendor 요청 처리는 실험 구현입니다. USB descriptor 완전 에뮬레이션이나 Samsung 하드웨어 인증 우회 성공을 주장하지 않습니다. 특정 Samsung/Android 환경에서 개발되었으며 범용 호환성은 확인되지 않았습니다.
-- **환경 재현:** 정확한 보드 모델, Arduino RP2040 core, 라이브러리 버전 및 로컬 수정 여부가 아직 문서화되지 않았습니다. 현재 저장소 정리 과정에서 빌드·업로드·장치 재시험은 수행하지 않았습니다.
-- **타이밍:** SI470X 내부 함수의 blocking 여부는 저장소만으로 확인할 수 없습니다. SEEK의 60 ms 초과 조건은 실제 완료 검증이 아니며, 과거 UI timeout의 원인·정확한 지속시간·해결 재현을 이 코드만으로 확정할 수 없습니다.
-- **상태 표현:** SEEK 성공은 RSSI 임계값 비교이며 RSSI 단위를 여기서 dBm으로 단정하지 않습니다. Direct Tune 성공 및 QUERY byte 1에는 고정값이 사용됩니다.
-- **명령 처리:** pending command는 큐가 아닌 단일 저장 공간입니다. 연속 요청으로 이전 요청이 덮어써질 수 있으며, 동시·연속 요청 처리의 견고성은 추가 검토 대상입니다.
-- **입력·전송 검증:** 볼륨·주파수 입력 검증이 제한적입니다. control response는 64바이트 버퍼에 대해 요청의 `wLength`를 그대로 전달하며, Endpoint 전송 함수의 반환값 확인도 없습니다. 전송 실패·버퍼 수명·비정상 요청 처리는 코드 리뷰 대상입니다.
+## Known Issues
+
+1. **Automatic seek / station detection.** Station validation uses a simple `last_rssi > 15` threshold and is not reliable. Incorrect station detection can leave subsequent searching unable to continue normally. Direct tune's success flag is set unconditionally and is not a reception-quality test.
+2. **Samsung playback-mode handling.** The earphone/speaker selection UI does not always appear at the desired time when connecting the adapter. Normal earphone mode itself has been physically verified.
+3. **Standalone operation.** The Samsung phone/app is currently the primary controller. There is no phone-free standalone radio UI.
+4. **Audio transients.** Loud beep/pop/transient events occurred in abnormal initialization or connection states. The verified GPIO4/5 setup operated normally, but all power and error states have not been tested.
+5. **Error handling and concurrency.** Library polling can block, the pending command storage is a single slot rather than a queue, and input/transfer validation is limited. Notify transfer return values are recorded for CMD9 diagnostics; state advances without a dedicated failure retry. Further review is needed before stronger robustness claims.
+
+USB PCM audio, phone speaker/Bluetooth routing, full USB Audio functionality and OLED/standalone controls are not implemented features. Compatibility is limited to evidence from the tested setup.
+
+## Roadmap
+
+Future work; none of these items is claimed complete:
+
+- Improve SEEK / RSSI station validation.
+- Improve Samsung playback-mode handling.
+- Remove obsolete diagnostic instrumentation after validation.
+- Improve error handling / I2C recovery.
+- Reduce audio transients during abnormal initialization.
+- Optional standalone control mode.
+- Optional SSD1306 OLED display on the I2C bus.
+- Optional physical controls for standalone operation.
+- Future architectural cleanup while preserving the verified legacy implementation.
+
+## Prior Work / Acknowledgements
+
+Thanks to [kjy00302/eo-ic100_radio](https://github.com/kjy00302/eo-ic100_radio) for an important reference during the initial investigation of Samsung EO-IC100 FM functionality and the Samsung protocol. That project presents a Python proof of concept for controlling EO-IC100's FM radio.
+
+Here, Samsung's Android FM service is the host/controller and the RP2040 + SI4703 adapter provides the device-side FM hardware. This acknowledgement does not assert that the projects are identical or that source code was copied.
 
 ## Contributions
 
-향후 Public GitHub repository로 공개할 예정입니다. 다음 분야의 분석, bug report, code review 및 Pull Request를 환영합니다.
+Reports and contributions on protocol observations, station validation, device compatibility and hardware documentation are welcome. Include board/core/library versions, phone/OS/app versions, reproduction steps and expected versus observed behavior. Remove account, network and device identifiers from logs and screenshots. Explain changes relative to the preserved hardware-verified baseline.
 
-- Vendor control protocol 분석
-- SI4703 동작과 주파수 보정 검증
-- Android 기기별 호환성 시험
-- USB timing 및 명령 처리 개선
-- 하드웨어 구성과 배선 문서화·개선
-
-문제를 보고할 때는 보드·라이브러리 버전, Android 기기·OS·앱 정보, 재현 절차, 기대 결과와 실제 결과를 함께 남겨 주세요. 로그와 화면에서는 계정·네트워크·기기 식별정보를 제거해 주세요. 코드 변경은 동작했던 기준 코드와의 차이 및 검증 결과를 설명해 주세요.
-
-## Disclaimer
-
-개인 연구 및 상호운용성 실험을 위한 비공식 프로젝트입니다. Samsung 또는 Silicon Labs와 공식적으로 관련되거나 이들의 승인을 받은 프로젝트가 아닙니다.
+This is an unofficial interoperability project, with no affiliation with or endorsement from Samsung or Silicon Labs.
 
 ## License
 
-이 repository의 자체 코드는 [MIT License](LICENSE)로 제공됩니다. Copyright (c) 2026 sammik9660.
+This repository's own code is provided under the [MIT License](LICENSE). Copyright (c) 2026 sammik9660.
 
-Adafruit TinyUSB, SI470X, Arduino core 등 외부 dependency에는 각각의 라이선스가 적용되며, 이 프로젝트의 MIT License가 해당 라이선스를 변경하거나 대체하지 않습니다.
+External dependencies, including Arduino-Pico, Adafruit TinyUSB and PU2CLR SI470X, retain their respective licenses. This project's license does not replace them.

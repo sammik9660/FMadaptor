@@ -6,7 +6,7 @@
 
 canonical firmware는 `firmware/fm_adapter/fm_adapter.ino`다. baseline commit 전에는 코드·주석·공백·인코딩·줄바꿈을 포함해 수정하지 않는다.
 
-보존 기준 SHA-256:
+최초 baseline 보존 기준 SHA-256 (현재 검증 firmware와 구분):
 `407CC1A16C573DD90F49A0C0F213EEBBE4428F009DC69F02C21BC156A62088B8`
 
 baseline 이후에도 코드 변경 전후 다음 순서를 따른다.
@@ -19,6 +19,8 @@ baseline 이후에도 코드 변경 전후 다음 순서를 따른다.
 6. 가능한 경우 빌드 또는 관련 검증을 수행하고, 수행하지 못한 검증을 명시한다.
 
 동작 코드 변경 전 baseline 보존이 선행되어야 한다. baseline 생성 자체는 후속 변경을 자동으로 허가하지 않는다. 문서 작업도 기존 파일 무결성을 확인한다.
+
+현재 hardware-verified firmware 기준은 a15fce261708a2150e12d6dc011ce3794606c2b7이며 main merge c94294bc829e44bb5e68e271b6d399e4fa02be47에서 바이트 동일하게 보존했다. 현재 firmware SHA-256은 7A6C20043EF494FD0DD74BC7387234CE4A4A6D17285A437EFD672BD5852CCD7C다. 역사 문서의 GPIO8/9와 최초 hash는 당시 상태를 설명하며 현재 핀/해시를 대체하지 않는다.
 
 ## No Unrequested Refactoring
 
@@ -37,8 +39,9 @@ baseline 이후에도 코드 변경 전후 다음 순서를 따른다.
 - control callback → main loop 처리 구조
 - SEEK 후 60ms 초과 조건
 - safeTune() 및 현재 주파수 보정 로직
-- SDA GPIO8 / SCL GPIO9 / RESET GPIO2
+- 현재 검증된 SDA GPIO4 / SCL GPIO5 / RESET GPIO2
 - setBand(0) / setSpace(0)
+- rx.setup(RESET_PIN, SDA_PIN); 선행 Wire.begin() 없이 라이브러리 내부 begin으로 SDA/I2C 복원
 
 이 값들이 영원히 옳다는 뜻은 아니다. 변경이 필요하면 먼저 근거와 예상 영향을 사용자에게 설명한다. SEEK와 Direct Tune을 근거 없이 callback 내부의 동기 처리로 되돌리지 않는다.
 

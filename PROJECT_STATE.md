@@ -1,257 +1,105 @@
 # PROJECT_STATE
 
-최종 기록일: 2026-09-26  
-현재 단계: 관리 구조 및 기존 8개 파일의 baseline preflight 완료. MIT License 설정 완료. Git 초기화와 baseline commit 이전.
+최종 기록일: 2026-10-02. 프로젝트 표시 이름: **Samsung USB-C FM Radio Adapter**.
+현재 단계: hardware-verified prototype를 main에 통합·push 완료. 이번 작업은 문서 동기화만 수행한다.
 
-이 파일은 사용자와 후속 Codex 세션을 위한 상태 인계 문서다. 외부 소개는 [README.md](README.md), 실행 구현의 기준은 [canonical firmware](firmware/fm_adapter/fm_adapter.ino)다. 새 세션은 이 문서를 읽은 뒤 실제 파일 상태와 현재 사용자 요청을 확인한다. 아래 체크리스트는 기록 시점의 상태이며 다음 작업을 자동으로 허가하는 목록이 아니다.
+README는 외부 소개, 이 파일은 후속 개발 세션의 상태 인계, AGENTS.md는 작업 규칙이다. 기록과 실제 Git 상태를 함께 확인한다. CONFIRMED는 코드/빌드/사용자 관찰의 근거를 구분하며 UNVERIFIED와 구현되지 않은 기능을 완료로 승격하지 않는다.
 
-상태 구분:
+## Current Goal
 
-- **CONFIRMED:** 실행 코드, 파일 검증 또는 사용자 확인에 근거한다. 근거 종류를 구분하며 코드 존재를 새로운 장치 시험 성공으로 해석하지 않는다.
-- **UNVERIFIED:** 환경·측정·재현이 아직 확인되지 않았다.
-- **NOT IMPLEMENTED / OUT OF SCOPE:** 현재 구현 완료 기능으로 주장하지 않는다.
+Samsung built-in FM Radio app/service를 controller로 사용하여 RP2040 + SI4703 외부 튜너의 FM 기능을 제공하는 Adapter를 유지보수한다. 현재 검증된 legacy firmware 보존이 기능 개선보다 우선이다. 별도의 Android FM 앱이나 정품 이어폰 전체 기능 복제 프로젝트로 설명하지 않는다.
 
-## 1. Current Goal
+## Canonical Source and Preservation
 
-기존에 실제 동작했던 FM Adapter를 원본 훼손 없이 정리하여 Git/GitHub 기반으로 유지보수 가능한 공개 프로젝트로 이전한다. 현재 단계에서는 기능 개선보다 기존 동작 코드 보존이 우선이다.
+- 현재 canonical firmware: `firmware/fm_adapter/fm_adapter.ino`.
+- 원본 archive: 기존 `어댑터` 폴더의 31개 자료. 수정·이동·삭제·이름 변경하지 않는다.
+- 최초 canonical TXT: `1. 최종코드에 주석 추가 버전.txt`. 실제 최종 동작 TXT와 주석/공백 외 코드가 동일하다는 사용자 확인을 받았다.
+- 최초 TXT→INO 복사는 byte-for-byte 동일했고 SHA-256은 `407CC1A16C573DD90F49A0C0F213EEBBE4428F009DC69F02C21BC156A62088B8`이었다. 이는 **최초 baseline**의 해시이며 현재 firmware 해시가 아니다.
+- 최초 baseline commit: `bb134825cd34ffde106fb25d4aec5ccec7e5c8f7`.
+- 직접 기록 복구: `ee34972b1e0597dc0ff8247298f3ee42c1fea4db`, `historical/recovered-known-good`. 당시 전체 소스 출력과 실제 패치를 재생했다. 원래 바이너리/인코딩/EOL 동일성은 확정하지 않는다. 상세 근거는 [recovered-known-good.md](docs/protocol/recovered-known-good.md)에 보존한다.
+- hardware-verified commit: `a15fce261708a2150e12d6dc011ce3794606c2b7`, `experiment/si470x-setup-sda`.
+- main 통합: `c94294bc829e44bb5e68e271b6d399e4fa02be47`. 일반 merge, 두 이력 보존. firmware는 a15fce2와 바이트 동일. 실험 branch도 로컬/원격에 보존한다.
+- 현재 검증 firmware SHA-256: `7A6C20043EF494FD0DD74BC7387234CE4A4A6D17285A437EFD672BD5852CCD7C`.
 
-공개는 향후 목표다. GitHub 저장소 연결·push·공개가 완료된 상태가 아니다. 한 번에 NEXT ACTION 하나씩 진행한다.
+## Confirmed Physical Results
 
-## 2. Canonical Source
+**CONFIRMED — 사용자 실기 확인**
 
-**CONFIRMED — 사용자 결정 및 이전 비교·복사 검증**
+RP2040-Zero + SI4703, SDA GPIO4 / SCL GPIO5 / RESET GPIO2에서 Samsung FM 앱의 normal earphone mode, FM playback/tuning이 정상 동작했다. 이전의 심한 tuning 지연과 continuous loud beep가 해당 시험에서는 없었다. 사용자는 volume/mute control과 SEEK command support도 현재 기능으로 확인했다. SEEK 지원과 방송국 판정의 신뢰성은 구분한다.
 
-| 항목 | 확정 내용 |
-| --- | --- |
-| 실제 최종 동작 코드 원본 | `1. 최종, 주파수 탐색 변환 완벽 코드.txt` |
-| 문서화 및 향후 canonical 기준 원본 | `1. 최종코드에 주석 추가 버전.txt` |
-| 새 프로젝트 canonical firmware | `firmware/fm_adapter/fm_adapter.ino` |
-| 복사 방법 | 주석 추가 버전을 내용 변경 없이 파일 복사 |
-| 원본과 최초 복사본 | byte-for-byte 동일한 상태로 검증됨 |
-| 펌웨어 크기 | 28,247바이트 |
+별도 최소 진단 sketch에서 GPIO8/9는 반복적으로 address ACK를 얻지 못했고, 물리적으로 GPIO4/5로 옮긴 뒤 완전 전원 재인가를 반복해도 0x10 ACK 및 2-byte read가 성공했다. 이는 관찰이며 기존 배선 실패 원인을 확정하지 않는다.
 
-복사 당시 SHA-256 및 이 문서 작성 시 재확인한 SHA-256:
+정확한 휴대폰 모델/Android/FM 앱 버전, 시험 횟수와 전체 전원 조건은 아직 미기록이다. 이 세션에서 새로운 실기 시험을 수행한 것은 아니다.
 
-```text
-407CC1A16C573DD90F49A0C0F213EEBBE4428F009DC69F02C21BC156A62088B8
-```
+## Confirmed Implementation and Decisions
 
-실제 동작본과 주석 추가 버전은 이전 분석에서 주석·공백을 제외한 코드가 동일함을 확인했고 사용자가 canonical 선정을 확정했다. 원본 TXT와 최초 `.ino`의 바이트 동일성은 이 두 TXT 사이의 동일성과 구별한다.
+**CONFIRMED — 현재 코드 및 설치 라이브러리 대조**
 
-기존 `어댑터` 폴더는 새 프로젝트와 별개의 원본 보관소다. 31개 원본을 수정·삭제·이동·이름 변경하지 않는다. 최초 복사 작업 전후 원본 파일의 경로·크기·SHA-256이 일치했다. 별도 추가 백업 생성까지 완료되었다는 기록은 없다.
+- Arduino `setup()` / `loop()`, TinyUSB 및 `SI470X rx` 사용.
+- RESET=2, SDA=4, SCL=5. 100 kHz I2C. `DUMMY_INT=4` 정의는 남아 있지만 사용되지 않는다.
+- 초기화 순서: `Wire.setSDA` → `Wire.setSCL` → `Wire.setClock(100000)` → `rx.setup(RESET_PIN, SDA_PIN)`. 선행 `Wire.begin()` 없음.
+- PU2CLR setup 두 번째 인자는 SDA이다. SDA OUTPUT LOW → RESET → 내부 Wire.begin() → powerUp() 순서. Arduino-Pico 6.1.1 begin은 이미 실행 중이면 반환하므로 선행 begin을 다시 추가하지 않는다.
+- VID 0x04E8 / PID 0xA05B. BesCmd SET=161 / GET=162 / QUERY=163.
+- SET 0/4/5: mute 기반 radio on/off, mute, volume. CMD7 SEEK / CMD9 direct tune은 callback에서 `pending_cmd` / `target_val` 예약 후 main loop에서 실행.
+- GET8 저장 볼륨 / GET13 저장 주파수 / GET17=0. 기타 GET 기본값 1. GET2/GET18/SET14에 별도 기능 구현을 주장하지 않는다.
+- QUERY: success flag, 고정 byte 1, frequency low/high, RSSI. 저장값을 반환하며 새 측정을 시작하지 않는다.
+- `setBand(0)`, `setSpace(0)`: 설치 라이브러리에서 87.5–108 MHz / 200 kHz. 초기 current_freq=10770, current_vol=7, setup mute=true/volume=0.
+- legacy `safeTune()` → `rx.setChannel()` 유지. CMD9 후 RSSI 조회, success=true, notify_state=1. bounded tune/recovery/watchdog 없음.
+- SEEK는 `rx.seek(0, direction)` 반환 후 60ms 초과 조건에서 주파수/RSSI 처리. station success는 `last_rssi > 15`.
+- Endpoint 0x85 notify: `01 00 08 00 00`, `01 01 <freq low> <freq high> <RSSI>`. Busy 검사와 CMD9 transfer return 기록은 존재하나 실패 결과에 따른 전용 retry는 없다.
+- DebugSnapshot v1 / packed 88 bytes / 4 slots / 13 stage flags/timestamps. EP0 read: C0/D9, value 464D, index 1, length 88. 최신 incomplete 우선 조회.
 
-실제 동작 성공은 사용자의 기존 확인이다. 이번 이전 작업에서는 빌드·펌웨어 업로드·하드웨어 재시험을 수행하지 않았다. 원본 주석의 과장된 설명이나 단위 표현을 검증된 사실로 승격하지 않는다.
+Callback/main-loop 분리를 근거 없이 되돌리지 않는다. Control ACK는 tune 완료 증명이 아니다. SET 0/4/5는 callback에서 tuner 접근하며 라이브러리 tune/seek polling은 blocking될 수 있으므로 전체 firmware가 완전히 non-blocking이라고 주장하지 않는다. 단일 pending 슬롯 및 concurrency, 입력/전송 검증은 향후 검토 대상이다.
 
-## 3. Confirmed Implementation
+## Frequency Handling
 
-**CONFIRMED — 현재 canonical firmware를 직접 대조**
+기본 표현 `10770 = 107.70 MHz`, 정수 1은 10 kHz다. safeTune은 freq_val>5000이면 `(freq_val - 8750) / 20`, 그 외 `(freq_val - 875) / 2`로 채널을 계산하여 setChannel에 전달한다.
 
-| 항목 | 코드에서 확인한 내용 |
-| --- | --- |
-| 대상 및 진입점 | RP2040 기반 사용 구성은 사용자 확인. `setup()` / `loop()`와 `ARDUINO_ARCH_RP2040` 조건부 `TinyUSBDevice.task()` 존재 |
-| 의존성 | `Adafruit_TinyUSB.h`, `Wire.h`, `SI470X.h`; `SI470X rx`로 튜너 제어 |
-| I2C | SDA GPIO8 / SCL GPIO9, `Wire.begin()`, 100000 Hz |
-| RESET 및 초기화 인자 | RESET GPIO2, `DUMMY_INT=4`, `rx.setup(RESET_PIN, DUMMY_INT)` |
-| USB 식별값 | Samsung VID `0x04E8` / PID `0xA05B` 설정 |
-| BesCmd | SET=161, GET=162, QUERY=163; 이들은 `bRequest` 값 |
-| 명령 인자 | `wValue` → cmd, `wIndex` → val |
-| SET | 0: 음소거 기반 ON/OFF 처리, 4: mute, 5: volume, 7: SEEK 예약, 9: Direct Tune 예약 |
-| GET | command 8: 저장 볼륨, 13: 저장 주파수. 그 외 기본값 1 |
-| QUERY | 성공 플래그, 고정값 1, 주파수 하위·상위 바이트, RSSI |
-| Notify | Interrupt IN Endpoint `0x85`, 두 단계 5바이트 전송 요청 |
-| 튜너 설정 | `setBand(0)`, `setSpace(0)`, `safeTune()` 호출 |
-| 초기 상태 | `current_freq=10770`, `current_vol=7`; setup에서 mute=true, 튜너 볼륨 0 |
-| 예약 상태 | `volatile uint8_t pending_cmd`, `volatile uint16_t target_val` |
-| SEEK | main loop에서 val=1이면 `rx.seek(0, 1)`, 그 외 `rx.seek(0, 0)` |
-| SEEK 후 처리 | 호출 반환 후 기록한 시간에 대해 `millis() - seek_start_time > 60` 검사 |
-| 주파수·RSSI | SEEK 주파수 역산 및 보정, `rx.getRssi()`, 마지막 결과 저장·응답 |
-| Direct Tune | main loop의 `safeTune(current_freq)`, RSSI 조회, 성공 플래그 true 지정 |
+SEEK는 `fake_f=rx.getFrequency()`, `channel=(fake_f-8750)/10`, `real_f=8750+channel*20`으로 보정한다. 기존 동작 수식을 보존한다. 모든 library 버전의 결함으로 일반화하지 않는다. Direct Tune 저장 주파수는 요청값이며 실측 재확인값이 아니다.
 
-Notify 첫 패킷은 `01 00 08 00 00`, 두 번째는 `01 01 <freq low> <freq high> <RSSI>`다. Endpoint busy 여부를 확인하고 전송을 요청하지만 전송 함수의 반환값은 확인하지 않는다.
+## Build Environment
 
-SEEK 성공 플래그는 `last_rssi > 15` 비교다. RSSI 물리 단위를 dBm으로 단정하지 않는다. QUERY byte 1은 실제 stereo 측정 결과가 아닌 고정값 1이다. Direct Tune의 성공 플래그도 실제 수신 검증이 아닌 무조건 true다. GET / QUERY는 저장 상태를 반환하며 새 측정을 시작하지 않는다.
+확인된 reference: Earle Philhower Arduino-Pico 6.1.1, Waveshare RP2040 Zero, Adafruit TinyUSB stack / library 3.7.7, PU2CLR SI470X 1.0.5, `usbstack=tinyusb`. GPIO4/5 build 성공: flash 85,788 bytes / global RAM 17,836 bytes. 외부 library는 repository에 vendoring하지 않는다.
 
-## 4. Important Architecture Decision
+설치 PU2CLR source 경로는 Arduino user libraries의 `PU2CLR_SI470X/src`다. 확인 해시:
 
-**CONFIRMED — 구현 및 보존할 설계 제약**
+- SI470X.cpp: `FB4E1FCFF57D0EC7A695E604EF51CF332D9F8927D9AE076B5B9059B682AF46E7`
+- SI470X.h: `7DC902611DAC191B1BA44EF2DB00BCCFBDA26586D851333B358FD307592FF7CE`
 
-USB control callback에서 SEEK / Direct Tune 전체 작업이 끝날 때까지 처리하지 않는다. `tud_vendor_control_xfer_cb()`는 해당 요청의 `target_val`과 `pending_cmd`를 설정하고 ACK 경로로 진행한다. 실제 튜너 제어는 main loop가 담당한다.
+PC의 전역 core 6.2.0과 격리 6.1.1 build를 구분한다. 과거 성공 flash의 binary hash/업로드 로그 대응은 미확정이다. 당시 기록에서도 같은 source의 실패와 재연결 후 성공이 공존했다.
 
-```text
-Vendor Control Request
-  → callback: target_val / pending_cmd 설정
-  → control ACK
-  → main loop: SEEK 또는 Direct Tune
-  → 주파수·RSSI 저장
-  → Endpoint 0x85 Notify
+main의 `diagnostics/android-fm-debug`는 후대 v4 parser다. 현재 v1/88-byte firmware와 호환된다고 안내하지 않는다. v1 reader는 `historical/working-snapshot-v1`에 남아 있다. 이번 문서 작업은 diagnostic code를 수정/제거하지 않는다.
 
-GET / QUERY → callback에서 저장 상태 반환
-```
+## Known Issues / Unverified / Out of Scope
 
-향후 리팩터링에서 이 분리를 근거 없이 없애거나 SEEK / Direct Tune을 callback 내부 동기 처리로 되돌리지 않는다. ACK는 하드웨어 작업 완료 증명이 아니다.
+- SEEK/RSSI threshold의 오검출과 이후 탐색 진행 문제: 사용자 보고. reliable station detection 미완료.
+- Samsung earphone/speaker mode UI가 원하는 시점에 항상 나타나지 않음. normal earphone mode 자체는 확인됨.
+- abnormal initialization/connection에서 loud beep/pop 사례. GPIO4/5 정상 시험 결과를 모든 오류/전원 상태의 무발생 보장으로 확대하지 않음.
+- standalone UI, OLED, physical controls: future ideas.
+- PCM over USB, phone speaker/Bluetooth routing, full USB Audio: 구현 완료 기능 아님.
+- 완전 descriptor 복제, 인증 우회, 범용 Samsung 호환성, bug-free/production-ready 상태를 주장하지 않음.
+- 세부 전원/회로/모듈 모델, phone/OS/app 버전, 장기 신뢰성 미확인.
+- 과거 timeout은 약 20초/30초 표현이 혼재. 정확한 고정 측정값으로 기록하지 않음.
 
-완전히 non-blocking인 시스템이라는 의미는 아니다. SET 0·4·5는 callback 안에서 튜너 함수를 호출하고, setup에는 `delay(100)`이 있다. `rx.seek()` / `rx.setChannel()`의 내부 대기 여부는 미확인이다. pending 저장소는 단일 슬롯이며 큐가 아니므로 연속 요청 처리도 추가 검토 대상이다.
+## Do Not Break
 
-## 5. Frequency Handling
+검증 commit을 보존한 뒤 사용자 요청 범위 안에서만 변경한다. 자동 refactor/format, 원본 archive 변경, 근거 없는 frequency/USB 구조 변경을 금지한다. 문서 작업에서도 source hash/diff를 검증한다. README의 성공 표현은 코드 존재와 실기 결과를 구분한다.
 
-**CONFIRMED — 코드 계산과 표현**
+## Migration Status
 
-기본 표현은 `10770 = 107.70 MHz`로, 정수 1이 10 kHz에 해당한다. `safeTune(freq_val)`은 다음 정수 계산 후 `rx.setChannel(channel)`을 호출한다.
+- [x] Original inventory / canonical identification / initial unmodified copy and integrity verification
+- [x] README / PROJECT_STATE / AGENTS / .gitignore / minimal docs
+- [x] Initial public-repository security preflight / MIT license decision
+- [x] Git initialization / original baseline commit / origin connection / first push
+- [x] Historical source recovery and evidence preservation
+- [x] SDA setup argument / initialization-order / GPIO4/5 experiments committed
+- [x] User physical verification / verified experiment pushed / main merged and pushed
+- [ ] Original presentation/photos/raw log documentation import — existing recovery evidence is separate
+- [ ] SEEK validation / playback-mode / recovery / transient improvements
+- [ ] Diagnostic removal / architectural cleanup / optional standalone/OLED controls
 
-```cpp
-// freq_val > 5000인 경우
-channel = (freq_val - 8750) / 20;
+Security checks apply to the reviewed files at their recorded time, not future imports. Original photos/logs remain outside the repository. Review identifying information before imports. The project's own code is MIT, Copyright (c) 2026 sammik9660; external dependency licenses remain separate. Prior work acknowledgement is not proof of code copying or a license relationship.
 
-// 그 외의 경우
-channel = (freq_val - 875) / 2;
-```
-
-두 번째 계산은 1077을 107.7 MHz로 나타내는 입력 형식에 대응한다. 두 계산 모두 87.5 MHz를 기준으로 200 kHz 간격의 채널 인덱스를 계산한다. 입력 범위·격자 정렬 검사는 없고 정수 나눗셈을 사용한다.
-
-SEEK 결과 변환은 다음과 같다.
-
-```cpp
-uint16_t fake_f = rx.getFrequency();
-uint16_t channel = (fake_f - 8750) / 10;
-uint16_t real_f = 8750 + (channel * 20);
-current_freq = real_f;
-```
-
-**UNVERIFIED — 보정의 배경과 라이브러리 동작**
-
-위 계산은 반환값이 87.5 MHz 기준·100 kHz 간격으로 계산되었다는 가정 아래 채널 인덱스를 역산하여 200 kHz 간격으로 복원한다. 수식의 존재는 확정이나, 정확한 SI470X 구현이 없으므로 그 가정의 일반적 타당성이나 특정 라이브러리 버그를 입증한 것으로 기록하지 않는다.
-
-`setBand(0)` / `setSpace(0)` 호출은 확정이다. 원본 주석의 87.5–108.0 MHz 및 200 kHz 설정 의도와 실제 사용 라이브러리의 API 의미는 구분한다. 현재 동작했던 보정식을 근거 없이 수정하지 않는다.
-
-Direct Tune은 요청값을 `current_freq`에 저장하고, 실제 주파수를 다시 읽어 갱신하지 않는다.
-
-## 6. Known Limitations
-
-**NOT IMPLEMENTED / OUT OF SCOPE**
-
-- PCM USB audio 전달 경로는 현재 구현되어 있지 않다. `tud_audio_rx_done_cb()`는 true만 반환한다.
-- 스마트폰 스피커 / Bluetooth audio routing 및 완전한 USB Audio 구현을 완료 기능으로 주장하지 않는다.
-- 이번 이전 단계에서 오디오 기능 추가, 코드 수정·리팩터링, 기능 개선을 시작하지 않는다.
-
-**UNVERIFIED — 성공 주장 금지**
-
-- USB descriptor 완전 에뮬레이션 성공
-- Samsung 하드웨어 인증 우회 성공
-- 모든 Samsung/Android 기기와의 호환성
-- 전체 firmware의 완전한 non-blocking 동작
-- 과거 timeout의 정확한 측정값, 원인 확정 및 해결의 재현
-
-**CONFIRMED — 코드상 한계와 검토 항목**
-
-- SEEK의 60 ms 초과 조건은 시간 기반 검사이며 칩의 실제 완료 비트 확인이 아니다.
-- RSSI 성공 판정, Direct Tune 성공 및 QUERY 고정값은 실제 수신 품질·stereo 검증과 다르다.
-- 단일 pending 슬롯, 입력값 검증, 64바이트 control 버퍼에 전달하는 `wLength`, Notify 전송 결과 및 버퍼 수명은 향후 리뷰 대상이다.
-- 발견한 개선 후보는 baseline 이전에 자동 수정할 근거가 아니다.
-
-## 7. Unverified Environment
-
-다음은 모두 **UNVERIFIED**다.
+## Next Action
 
-- 정확한 RP2040 개발 보드 모델
-- Arduino IDE, Arduino RP2040 core / board package 및 버전
-- 보드 선택과 USB Stack 설정
-- Adafruit TinyUSB 버전
-- SI470X library의 정확한 출처·버전 및 수정 여부
-- `rx.seek()` / `rx.setChannel()` 내부 blocking 특성
-- 실제 성공 테스트에 사용한 스마트폰 모델, Android 버전 및 FMRadio 앱 버전
-- 모듈 모델, 전원·안테나·아날로그 오디오 배선 및 DUMMY_INT의 실제 연결
-- timeout의 정확한 측정값
-
-과거 자료에는 약 20초와 약 30초 표현이 혼재한다. 하나를 확정 측정값으로 선택하지 않는다. 사용자 설명에 있는 개선 경험과 코드상 callback/main-loop 분리는 기록할 수 있지만, 새로운 재현 시험을 완료했다고 쓰지 않는다.
-
-## 8. Do Not Break
-
-- baseline commit 전 canonical firmware를 수정하지 않는다.
-- 자동 리팩터링·자동 formatting·주석 수정·인코딩 또는 줄바꿈 정리를 하지 않는다.
-- 동작 코드 변경 전에 반드시 baseline을 보존한다. baseline 완료 자체를 코드 변경의 자동 허가로 해석하지 않는다.
-- USB callback / main-loop 처리 구조를 근거 없이 변경하지 않는다.
-- 주파수 변환식을 근거 없이 수정하지 않는다.
-- 원본 `어댑터` 폴더를 수정·삭제·이동·이름 변경하지 않는다.
-- 미확인 기능을 README의 성공 기능으로 표현하지 않는다.
-- 문서 작업 시에도 canonical firmware의 SHA-256을 확인한다.
-- 사용자가 지정한 단계와 파일 범위만 작업하고 NEXT ACTION은 하나만 제안한다.
-
-## 9. Migration Status
-
-2026-09-26 현재 상태:
-
-- [x] Original project inventory — 원본 31개 목록·역할 분석. 기존 .doc 본문과 문서 이미지 등 미분석 범위는 남아 있음
-- [x] Canonical source identified — 사용자 확정
-- [x] Canonical firmware copied without modification
-- [x] Copy integrity verified — 원본 TXT와 최초 .ino 바이트 동일성 확인; 현재 SHA-256 재확인
-- [x] README created — 기능 설명 유지, Project Structure만 실제 구조에 동기화
-- [x] PROJECT_STATE.md created — 현재 진행 상태에 동기화
-- [x] AGENTS.md created
-- [x] .gitignore created
-- [x] Minimal docs structure created — hardware / protocol / images 안내 README만 존재
-- [x] Public repository security preflight completed — 라이선스 추가 전 8개 파일의 텍스트·민감정보 패턴·절대 경로 재검사
-- [x] LICENSE decision — 사용자 결정에 따라 MIT License 적용; Copyright (c) 2026 sammik9660; LICENSE 생성
-- [x] Baseline review — 라이선스 추가 전 8개 파일의 목록·제외 규칙·문서 상태·보안·펌웨어 무결성 검토 완료. 라이선스 선택 후 추가·변경 파일은 commit 전에 확인 필요
-- [ ] Git initialization
-- [ ] Baseline commit
-- [ ] Existing GitHub repository connection — 기존 원격 저장소의 존재 여부·주소 미확인, 연결 미실행
-- [ ] First push
-- [ ] Documentation import — 원본 기록·발표·이미지는 아직 복사하지 않음; docs 안내 README 생성과 구분
-- [ ] Refactoring / improvements — baseline 보존 후 별도 범위로 진행
-
-현재 실제 구조:
-
-```text
-RP2040-SI4703-FM-Adapter/
-├── firmware/
-│   └── fm_adapter/
-│       └── fm_adapter.ino
-├── docs/
-│   ├── hardware/
-│   │   └── README.md
-│   ├── protocol/
-│   │   └── README.md
-│   └── images/
-│       └── README.md
-├── README.md
-├── PROJECT_STATE.md
-├── AGENTS.md
-├── LICENSE
-└── .gitignore
-```
-
-### Baseline file inventory
-
-현재 .gitignore 규칙을 논리적으로 대조한 포함 예정 파일은 LICENSE를 포함한 다음 9개다. Git 초기화·add·status 없이 검사했으며, 실제 index나 전역 Git ignore 설정까지 검증한 결과는 아니다.
-
-- `.gitignore`
-- `AGENTS.md`
-- `LICENSE`
-- `PROJECT_STATE.md`
-- `README.md`
-- `docs/hardware/README.md`
-- `docs/protocol/README.md`
-- `docs/images/README.md`
-- `firmware/fm_adapter/fm_adapter.ino`
-
-현재 존재하는 파일 중 제외 규칙에 일치하는 파일은 없다. 향후 OS·IDE 임시 파일, Python cache, Arduino/build output, 로컬 credential/secret, 지정 raw-log·추출 폴더 및 local-only/는 제외한다. 모든 TXT·PDF·이미지·INO를 일괄 제외하지 않는다. 원본 어댑터 폴더는 프로젝트 밖에 있고 자료를 반입하지 않았다.
-
-### Public repository preflight
-
-현재 프로젝트 파일에서 실제 비밀번호, API key, token, private key, Wi-Fi credential, ADB 연결 주소, 개인 계정 및 원본 Logcat 기기 식별정보를 발견하지 못했다. 민감정보 관련 단어와 공개 USB 식별 상수 자체는 비밀값으로 분류하지 않았다.
-
-AGENTS.md의 원본 보관소 절대 로컬 경로는 사용자가 의도적으로 포함한 유일한 로컬 절대 경로다. 그 외 불필요한 절대 경로나 원본 민감 자료의 오복사는 발견하지 못했다. 이전 보안 검사는 라이선스 추가 전 8개 텍스트 파일에 한정되며, 향후 자료 추가 시 다시 검사한다.
-
-README의 기능 설명은 유지하고 License 섹션과 파일 구조에 MIT License를 반영했다. 펌웨어와 관리 규칙·제외 규칙·docs 안내 파일은 변경하지 않았다. 빌드·업로드·하드웨어 재시험 및 Git 작업은 수행하지 않았다.
-
-### License check
-
-라이선스 생성 전 8개 파일을 검사했다. Adafruit TinyUSB, SI470X, Arduino core의 소스는 직접 포함되어 있지 않으며, 펌웨어는 include·타입·API를 통해 외부 dependency를 사용한다. TinyUSB 함수 선언은 있으나 해당 라이브러리 함수 구현은 포함하지 않는다. 별도 제3자 copyright / license / SPDX header 및 직접 복제된 라이브러리 구현의 명백한 증거는 발견하지 못했다. 로컬 파일 검사만으로 모든 코드 조각의 작성 출처를 입증한 것은 아니다.
-
-명백한 충돌 요소가 발견되지 않아 사용자 결정에 따라 자체 코드에 MIT License를 적용했다. Copyright (c) 2026 sammik9660. 표준 본문은 https://opensource.org/license/mit 와 대조했으며, LICENSE에 축약 없이 기록했다. 외부 dependency의 라이선스는 변경하거나 대체하지 않는다.
-
-## 10. Next Action
-
-**Git 초기화 및 baseline commit 생성**
-
-별도 사용자 요청으로 진행한다. 이번 단계에서는 Git 작업이나 코드 개선을 수행하지 않았다.
+Await a separately scoped user request. Repository rename/description changes are proposals only; code improvements are not started by this documentation task.
