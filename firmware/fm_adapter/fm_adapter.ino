@@ -333,7 +333,6 @@ void setup()
   Wire.setSDA(SDA_PIN);
   Wire.setSCL(SCL_PIN);
 
-  Wire.begin();
 
   Wire.setClock(100000);
 
