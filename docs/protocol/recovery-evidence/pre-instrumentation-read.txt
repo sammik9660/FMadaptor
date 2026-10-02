@@ -1,0 +1,476 @@
+#include <Adafruit_TinyUSB.h>
+#include <Wire.h>
+#include <SI470X.h>
+
+#define RESET_PIN 2
+#define SDA_PIN   8
+#define SCL_PIN   9
+#define DUMMY_INT 4
+
+SI470X rx;
+
+// 앱 규격
+// 107.7MHz = 10770
+uint16_t current_freq = 10770;
+
+uint8_t current_vol = 7;
+
+// 비동기 명령 처리
+volatile uint8_t pending_cmd = 0;
+volatile uint16_t target_val = 0;
+
+// notify 상태
+volatile uint8_t notify_state = 0;
+
+// seek 상태
+static unsigned long seek_start_time = 0;
+static bool waiting_for_seek = false;
+
+// 상태값
+bool last_seek_success = false;
+uint8_t last_rssi = 0;
+
+extern "C"
+{
+  bool usbd_edpt_xfer(
+    uint8_t rhport,
+    uint8_t ep_addr,
+    uint8_t *buffer,
+    uint16_t total_bytes
+  );
+
+  bool usbd_edpt_busy(
+    uint8_t rhport,
+    uint8_t ep_addr
+  );
+}
+
+// ----------------------------------------------------
+// 안전 튜닝
+// ----------------------------------------------------
+void safeTune(uint16_t freq_val)
+{
+  uint16_t channel = 0;
+
+  if (freq_val > 5000)
+  {
+    // 200kHz 스페이싱이므로 10이 아니라 20으로 나눕니다.
+    channel = (freq_val - 8750) / 20; 
+  }
+  else
+  {
+    // 혹시라도 875.0 포맷으로 들어올 경우를 대비해 1이 아닌 2로 나눕니다.
+    channel = (freq_val - 875) / 2; 
+  }
+
+  rx.setChannel(channel);
+}
+
+// ----------------------------------------------------
+// 삼성 USB 인터페이스
+// ----------------------------------------------------
+class SamsungHybridInterface : public Adafruit_USBD_Interface
+{
+public:
+
+  virtual uint16_t getInterfaceDescriptor(
+    uint8_t itfnum,
+    uint8_t* buf,
+    uint16_t bufsize
+  )
+  {
+    uint8_t desc[] =
+    {
+      9,
+      TUSB_DESC_INTERFACE,
+      2,
+      0,
+      0,
+      TUSB_CLASS_VENDOR_SPECIFIC,
+      0,
+      0,
+      0,
+
+      9,
+      TUSB_DESC_INTERFACE,
+      3,
+      0,
+      0,
+      TUSB_CLASS_VENDOR_SPECIFIC,
+      0,
+      0,
+      0,
+
+      9,
+      TUSB_DESC_INTERFACE,
+      4,
+      0,
+      1,
+      TUSB_CLASS_VENDOR_SPECIFIC,
+      0,
+      0,
+      0,
+
+      7,
+      TUSB_DESC_ENDPOINT,
+      0x85,
+      TUSB_XFER_INTERRUPT,
+      5,
+      0,
+      4
+    };
+
+    if (bufsize < sizeof(desc))
+      return 0;
+
+    memcpy(buf, desc, sizeof(desc));
+
+    return sizeof(desc);
+  }
+};
+
+SamsungHybridInterface samsung_hybrid;
+
+enum BesCmd
+{
+  SET   = 161,
+  GET   = 162,
+  QUERY = 163
+};
+
+// ----------------------------------------------------
+// SETUP
+// ----------------------------------------------------
+void setup()
+{
+  USBDevice.setID(0x04E8, 0xA05B);
+
+  USBDevice.setManufacturerDescriptor("Samsung");
+  USBDevice.setProductDescriptor("Samsung USB C Earphone");
+
+  USBDevice.addInterface(samsung_hybrid);
+
+  USBDevice.detach();
+  delay(100);
+  USBDevice.attach();
+
+  // I2C
+  Wire.setSDA(SDA_PIN);
+  Wire.setSCL(SCL_PIN);
+
+  Wire.begin();
+
+  Wire.setClock(100000);
+
+  // SI4703
+  rx.setup(RESET_PIN, DUMMY_INT);
+
+  // 중요
+  // 네 환경에서는 0이 정상 동작
+  rx.setBand(0);
+
+  // 200kHz spacing
+  rx.setSpace(0);
+
+  rx.setMute(true);
+
+  rx.setVolume(0);
+
+  safeTune(current_freq);
+}
+
+// ----------------------------------------------------
+// LOOP
+// ----------------------------------------------------
+void loop()
+{
+#if defined(ARDUINO_ARCH_RP2040)
+  TinyUSBDevice.task();
+#endif
+
+  // ------------------------------------------------
+  // SEEK 시작
+  // ------------------------------------------------
+  if (pending_cmd == 7 && !waiting_for_seek)
+  {
+    if (target_val == 1)
+    {
+      rx.seek(0, 1);
+    }
+    else
+    {
+      rx.seek(0, 0);
+    }
+
+    seek_start_time = millis();
+
+    waiting_for_seek = true;
+
+    pending_cmd = 0;
+  }
+
+      if (waiting_for_seek && millis() - seek_start_time > 60)
+      {
+          // 기존: uint16_t raw_f = rx.getFrequency();
+          uint16_t fake_f = rx.getFrequency(); // 라이브러리가 100kHz로 잘못 계산한 값
+
+          // 가짜 주파수에서 칩셋의 진짜 채널 번호를 역추출
+          uint16_t channel = (fake_f - 8750) / 10;
+
+          // 200kHz(한국 규격)를 곱해서 진짜 주파수 복원
+          uint16_t real_f = 8750 + (channel * 20);
+
+          // 복원된 진짜 주파수 사용
+          current_freq = real_f;
+
+          last_rssi = rx.getRssi();
+
+          last_seek_success = (last_rssi > 15);
+
+          notify_state = 1;
+
+          waiting_for_seek = false;
+      }
+  
+
+  // ------------------------------------------------
+  // DIRECT TUNE
+  // ------------------------------------------------
+  if (pending_cmd == 9)
+  {
+    current_freq = target_val;
+
+    safeTune(current_freq);
+
+    last_rssi = rx.getRssi();
+
+    last_seek_success = true;
+
+    notify_state = 1;
+
+    pending_cmd = 0;
+  }
+
+  // ------------------------------------------------
+  // NOTIFY STEP 1
+  // ------------------------------------------------
+  if (notify_state == 1 &&
+      !usbd_edpt_busy(0, 0x85))
+  {
+    static uint8_t step1[5] =
+    {
+      0x01,
+      0x00,
+      0x08,
+      0x00,
+      0x00
+    };
+
+    usbd_edpt_xfer(0, 0x85, step1, 5);
+
+    notify_state = 2;
+  }
+
+  // ------------------------------------------------
+  // NOTIFY STEP 2
+  // ------------------------------------------------
+  else if (notify_state == 2 &&
+           !usbd_edpt_busy(0, 0x85))
+  {
+    uint8_t step2[5] =
+    {  
+      0x01,
+      0x01,
+
+      (uint8_t)(current_freq & 0xFF),
+      (uint8_t)((current_freq >> 8) & 0xFF),
+
+      last_rssi
+    };
+
+    usbd_edpt_xfer(0, 0x85, step2, 5);
+
+    notify_state = 0;
+  }
+}
+
+// ----------------------------------------------------
+// AUDIO CALLBACK
+// ----------------------------------------------------
+extern "C"
+bool tud_audio_rx_done_cb(
+  uint8_t rhport,
+  uint16_t n_bytes
+)
+{
+  return true;
+}
+
+// ----------------------------------------------------
+// USB CONTROL CALLBACK
+// ----------------------------------------------------
+extern "C"
+bool tud_vendor_control_xfer_cb(
+  uint8_t rhport,
+  uint8_t stage,
+  tusb_control_request_t const * request
+)
+{
+  if (stage != CONTROL_STAGE_SETUP)
+  {
+    return true;
+  }
+
+  uint8_t req_type = request->bRequest;
+
+  uint16_t cmd = request->wValue;
+  uint16_t val = request->wIndex;
+
+  // ------------------------------------------------
+  // SET
+  // ------------------------------------------------
+  if (req_type == BesCmd::SET)
+  {
+    switch (cmd)
+    {
+      // RADIO ON/OFF
+      case 0:
+
+        if (val == 1)
+        {
+          rx.setMute(false);
+
+          rx.setVolume(current_vol);
+        }
+        else
+        {
+          rx.setMute(true);
+        }
+
+        break;
+
+      // MUTE
+      case 4:
+
+        if (val == 1)
+        {
+          rx.setMute(true);
+        }
+        else
+        {
+          rx.setMute(false);
+
+          rx.setVolume(current_vol);
+        }
+
+        break;
+
+      // VOLUME
+      case 5:
+
+        current_vol = val;
+
+        rx.setVolume(current_vol);
+
+        break;
+
+      // SEEK
+      case 7:
+
+        target_val = val;
+
+        pending_cmd = 7;
+
+        break;
+
+      // DIRECT TUNE
+      case 9:
+
+        target_val = val;
+
+        pending_cmd = 9;
+
+        break;
+    }
+
+    // ACK
+    if (request->wLength == 0)
+    {
+      return tud_control_status(rhport, request);
+    }
+    else
+    {
+      static uint8_t ack_buf[64] = {1};
+
+      return tud_control_xfer(
+        rhport,
+        request,
+        ack_buf,
+        request->wLength
+      );
+    }
+  }
+
+  // ------------------------------------------------
+  // GET / QUERY
+  // ------------------------------------------------
+  else if (
+    req_type == BesCmd::GET ||
+    req_type == BesCmd::QUERY
+  )
+  {
+    // GET
+    if (req_type == BesCmd::GET)
+    {
+      static uint8_t res_get[64] = {0};
+
+      uint16_t data = 1;
+
+      if (cmd == 8)
+      {
+        data = current_vol;
+      }
+      else if (cmd == 13)
+      {
+        data = current_freq;
+      }
+      else if (cmd == 17) {
+      data = 0;
+      }
+
+      memcpy(res_get, &data, 2);
+
+      return tud_control_xfer(
+        rhport,
+        request,
+        res_get,
+        request->wLength
+      );
+    }
+
+    // QUERY
+    static uint8_t res_query[64] = {0};
+
+    res_query[0] =
+      last_seek_success ? 1 : 0;
+
+    res_query[1] = 1;
+
+    res_query[2] =
+      current_freq & 0xFF;
+
+    res_query[3] =
+      (current_freq >> 8) & 0xFF;
+
+    res_query[4] = last_rssi;
+
+    return tud_control_xfer(
+      rhport,
+      request,
+      res_query,
+      request->wLength
+    );
+  }
+
+  return false;
+}
