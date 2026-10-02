@@ -338,7 +338,7 @@ void setup()
   Wire.setClock(100000);
 
   // SI4703
-  rx.setup(RESET_PIN, DUMMY_INT);
+  rx.setup(RESET_PIN, SDA_PIN);
 
   // 중요
   // 네 환경에서는 0이 정상 동작
