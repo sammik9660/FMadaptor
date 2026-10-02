@@ -1,0 +1,41 @@
+*** Begin Patch
+*** Update File: C:\Users\user\Desktop\RP2040-SI4703-FM-Adapter\firmware\fm_adapter\fm_adapter.ino
+@@
+-static bool copyLatestDebugSnapshot()
++static DebugSnapshot* selectDebugSnapshotForRead()
++{
++  if (debug_latest_slot >= DEBUG_SNAPSHOT_SLOT_COUNT)
++    return nullptr;
++
++  const uint16_t completed_flag = (uint16_t)(1u << DEBUG_NOTIFY_STEP2_RETURNED);
++
++  // Prefer the newest incomplete CMD9 record so a later successful command
++  // does not immediately hide the failed command that this probe targets.
++  for (uint8_t offset = 0; offset < DEBUG_SNAPSHOT_SLOT_COUNT; offset++)
++  {
++    uint8_t slot =
++      (uint8_t)((debug_latest_slot + DEBUG_SNAPSHOT_SLOT_COUNT - offset) % DEBUG_SNAPSHOT_SLOT_COUNT);
++    DebugSnapshot* snapshot = &debug_snapshots[slot];
++
++    if (snapshot->magic == DEBUG_SNAPSHOT_MAGIC &&
++        snapshot->format_version == DEBUG_SNAPSHOT_VERSION &&
++        snapshot->snapshot_size == sizeof(DebugSnapshot) &&
++        (snapshot->reached_flags & completed_flag) == 0)
++      return snapshot;
++  }
++
++  return activeDebugSnapshot();
++}
++
++static bool copyDebugSnapshotForRead()
+ {
+-  DebugSnapshot* snapshot = activeDebugSnapshot();
++  DebugSnapshot* snapshot = selectDebugSnapshotForRead();
+@@
+-    if (!copyLatestDebugSnapshot())
++    if (!copyDebugSnapshotForRead())
+*** Add File: C:\Users\user\Desktop\RP2040-SI4703-FM-Adapter\diagnostics\android-fm-debug\.gitignore
++.gradle/
++local.properties
++**/build/
+*** End Patch
