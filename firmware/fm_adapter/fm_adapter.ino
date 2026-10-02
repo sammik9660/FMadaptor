@@ -3,8 +3,8 @@
 #include <SI470X.h>
 
 #define RESET_PIN 2
-#define SDA_PIN   8
-#define SCL_PIN   9
+#define SDA_PIN   4
+#define SCL_PIN   5
 #define DUMMY_INT 4
 
 SI470X rx;
